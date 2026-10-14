@@ -23,3 +23,4 @@ socket.on('close', () => {
 socket.on('error', (error) => {
     console.log(`[TCP] No se pudo conectar`, error.message);
 });
+
