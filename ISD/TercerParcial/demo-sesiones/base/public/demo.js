@@ -78,14 +78,27 @@ function bloquearBotones(bloquear) {
 }
  
 //Etapa 3: el estado, le preguntamos al servidor si tenemos sesion
+//tiempo real: relojSesion guarda el texto y la hora en que vence la sesion (cookie)
+let relojSesion = null;
+
+//escribe el estado con los segundos que faltan, se llama cada segundo
+function pintarRelojSesion() {
+  if (!relojSesion) return;
+  const faltan = Math.max(0, Math.round((relojSesion.venceMs - Date.now()) / 1000));
+  $('estado').textContent = `${relojSesion.texto} · vence en ${faltan} s`;
+}
+
 async function pintarEstado() {
   const { status, datos } = await llamar('GET', '/api/sesion');
   const estado = $('estado');
   if (status === 200 && datos && datos.usuario) {
     const u = datos.usuario;
-    estado.textContent = `Con sesión: ${u.nombre} (${u.rol}) · sesión ${datos.sesion} · vence en ${datos.expiraEnSegundos} s`;
+    //contador en tiempo real: guardamos la hora exacta en que vence y la pantalla la va restando cada segundo
+    relojSesion = { texto: `Con sesión: ${u.nombre} (${u.rol}) · sesión ${datos.sesion}`, venceMs: Date.now() + datos.expiraEnSegundos * 1000 };
     estado.className = 'estado con-sesion';
+    pintarRelojSesion();
   } else {
+    relojSesion = null;
     estado.textContent = `Sin sesión (el servidor responde ${status})`;
     estado.className = 'estado sin-sesion';
   }
@@ -216,10 +229,20 @@ function leerPayload(token) {
   }
 }
 
+//tiempo real: relojJWT guarda el texto y la hora en que vence el token
+let relojJWT = null;
+
+function pintarRelojJWT() {
+  if (!relojJWT) return;
+  const faltan = Math.max(0, Math.round((relojJWT.venceMs - Date.now()) / 1000));
+  $('estado-jwt').textContent = `${relojJWT.texto} · vence en ${faltan} s`;
+}
+
 //le preguntamos al servidor si el token sirve y mostramos sus datos
 async function pintarEstadoJWT() {
   const estado = $('estado-jwt');
   if (!tokenJWT) {
+    relojJWT = null;
     estado.textContent = 'Sin token';
     estado.className = 'estado sin-sesion';
     $('jwt-token').textContent = '(sin token)';
@@ -232,10 +255,13 @@ async function pintarEstadoJWT() {
   const { status, datos } = await llamar('GET', '/api/jwt/sesion', undefined, tokenJWT);
   if (status === 200 && datos && datos.usuario) {
     const u = datos.usuario;
-    estado.textContent = `Con token: ${u.nombre} (${u.rol}) · token ${datos.jti.slice(0, 8)}… · vence en ${datos.expiraEnSegundos} s`;
+    //tiempo real: el token trae su hora de vencimiento, la pantalla resta cada segundo sin preguntarle al servidor
+    relojJWT = { texto: `Con token: ${u.nombre} (${u.rol}) · token ${datos.jti.slice(0, 8)}…`, venceMs: Date.now() + datos.expiraEnSegundos * 1000 };
     estado.className = 'estado con-sesion';
+    pintarRelojJWT();
   } else {
     //el token ya no sirve (vencido, revocado o alterado)
+    relojJWT = null;
     estado.textContent = `Token NO válido: ${datos ? datos.error : status}`;
     estado.className = 'estado sin-sesion';
   }
@@ -330,3 +356,16 @@ async function iniciar() {
 }
  
 iniciar();
+
+//tiempo real: cada segundo se actualizan los dos contadores
+//si un contador llega a 0 le preguntamos al servidor para mostrar el motivo (vencido)
+setInterval(() => {
+  pintarRelojSesion();
+  pintarRelojJWT();
+  if (relojSesion && Date.now() >= relojSesion.venceMs) { relojSesion = null; pintarEstado(); }
+  if (relojJWT && Date.now() >= relojJWT.venceMs) { relojJWT = null; refrescarJWT(); }
+}, 1000);
+
+//tiempo real: cada 5 segundos revisamos el token con el servidor, asi si lo revocan (logout en otra pestaña)
+//la pantalla lo muestra sin tener que recargar. /api/jwt/sesion no alarga el token, solo lo consulta
+setInterval(() => { if (tokenJWT) refrescarJWT(); }, 5000);
