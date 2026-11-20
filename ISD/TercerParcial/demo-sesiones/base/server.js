@@ -11,6 +11,8 @@ process.on('unhandledRejection', (error) => {
 });
 
 // Antes de arrancar, comprueba que MySQL responde y que la base tiene usuarios.
+//Nota para cambiar de commit jeje
+
 pool
   .query('SELECT COUNT(*) AS total FROM usuarios')
   .then(([filas]) => {
